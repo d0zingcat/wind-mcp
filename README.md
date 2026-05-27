@@ -34,21 +34,73 @@
 
 ### 1. 环境准备
 
-确保您的 Windows 机器上已安装 **Wind金融终端** 并能正常登录。然后，安装 Python 依赖：
+**方式 A：本机直连 WindPy**
+
+确保本机已安装 **Wind金融终端** 并能正常登录。
+
+**方式 B：Wind HTTP 代理**
+
+在已安装 Wind 终端的机器上部署 **Wind HTTP 网关**（需自行实现，暴露 `POST /wind` 与 `GET /health`），本机无需 WindPy。网关实现可保持私有，本仓库仅包含 MCP 侧的 HTTP 客户端。
+
+安装 Python 依赖：
 
 ```bash
 pip install -r requirements.txt
+# 或
+uv sync   # 若使用 uv 管理依赖
 ```
 
 ### 2. 启动服务
 
-在项目根目录下，运行以下命令启动 MCP 服务器：
+**局域网代理模式（无本机 Wind 终端）：**
 
 ```bash
-python src/wind_mcp_direct_server.py --host 0.0.0.0 --port 8888
+export WIND_USE_PROXY=1
+export WIND_API_URL=http://wind-host:6668
+uv run src/wind_mcp_direct_server.py --host 0.0.0.0 --port 8888
 ```
+
+或一行命令：
+
+```bash
+uv run src/wind_mcp_direct_server.py \
+  --wind-proxy \
+  --wind-api-url http://wind-host:6668 \
+  --host 0.0.0.0 --port 8888
+```
+
+**本机直连模式（有 Wind 终端）：**
+
+```bash
+uv run src/wind_mcp_direct_server.py --host 0.0.0.0 --port 8888
+```
+
 *   `--host 0.0.0.0` 允许局域网内的其他设备访问。
 *   `--port 8888` 您可以根据需要修改端口号。
+
+### 代理模式配置
+
+| 方式 | 说明 |
+| :--- | :--- |
+| `--wind-proxy` | 启用 Wind HTTP 代理 |
+| `--wind-api-url URL` | 网关地址（建议显式设置 `WIND_API_URL`） |
+| `WIND_USE_PROXY=1` | 环境变量，等同 `--wind-proxy` |
+| `WIND_API_URL` | 环境变量，等同 `--wind-api-url` |
+
+```
+Cursor → wind-mcp (:8888) → Wind HTTP 网关 (:6668) → Wind 终端
+```
+
+网关接口约定：
+
+- `GET /health` → `{"status":"ok","wind":"connected"}`
+- `POST /wind` → `{"type":"wsd","args":[...]}` → `{"errorCode":0,"data":[...]}`
+
+启动前检查网关：
+
+```bash
+curl http://wind-host:6668/health
+```
 
 ### 3. 客户端配置
 
@@ -97,7 +149,9 @@ python src/wind_mcp_direct_server.py --host 0.0.0.0 --port 8888
 ├── scripts/            # 存放管理和工具脚本
 │   └── manage_wind_service.sh # (macOS) 服务管理脚本
 ├── src/                # 核心源代码
-│   └── wind_mcp_direct_server.py # 核心代理服务程序
+│   ├── wind_backend.py           # Wind 后端选择（本机 / HTTP 代理）
+│   ├── wind_http_client.py       # Wind HTTP 网关客户端
+│   └── wind_mcp_direct_server.py # MCP 服务程序
 └── tests/              # 测试用例
     ├── test_cn_indicators.py
     ├── test_date_functions.py

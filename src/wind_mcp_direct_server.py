@@ -1,30 +1,48 @@
 #!/usr/bin/env python3
 """
-Wind API MCP直连服务器
+Wind API MCP 服务器
 
-此服务器直接连接Wind API，提供HTTP和SSE接口，不需要额外的Socket服务器。
-支持所有Wind API功能，包括wsd、wss、wsq等数据查询。
+支持两种 Wind 后端：
+1. 本机 WindPy（需安装 Wind 金融终端）
+2. Wind HTTP 代理（--wind-proxy 或 WIND_USE_PROXY=1，需自建网关）
 """
 
 import argparse
 import inspect
 import logging
 import os
-import socket
+import sys
 import time
 from typing import Dict, Any, Optional, List
 import threading
 from datetime import datetime
+
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
+
+def _bootstrap_wind_env(argv: List[str]) -> None:
+    """在加载 Wind 后端前，从命令行参数写入环境变量。"""
+    if "--wind-proxy" in argv:
+        os.environ.setdefault("WIND_USE_PROXY", "1")
+    for index, arg in enumerate(argv):
+        if arg == "--wind-api-url" and index + 1 < len(argv):
+            os.environ.setdefault("WIND_API_URL", argv[index + 1])
+
+
+_bootstrap_wind_env(sys.argv)
 
 # 第三方库导入
 import pandas as pd
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse, JSONResponse
-# 直接导入Wind API
-from WindPy import w
+from wind_backend import load_wind_backend
 # 导入FastMCP 2.0
 from fastmcp import FastMCP
+
+w, USING_WIND_PROXY, WIND_BACKEND_LABEL = load_wind_backend()
 
 # Wind自动登录尝试状态
 wind_auto_login_attempted = False
@@ -177,8 +195,8 @@ WIND_DATE_MACROS = {
         "examples": [
             "ED-1Y (一年前)",
             "IPO (上市首日)",
-            "RYF": "本年初",
-            "LYE": "上年末"
+            "RYF (本年初)",
+            "LYE (上年末)"
         ]
     }
 }
@@ -211,9 +229,15 @@ def windpy_example_prompt() -> str:
 try:
     w.start()
     is_connected = w.isconnected()
+    logger.info(f"Wind 后端: {WIND_BACKEND_LABEL}")
     logger.info(f"Wind API 连接状态: {is_connected}")
     if not is_connected:
-        logger.warning("Wind API 未连接成功，请确保Wind终端已登录")
+        if USING_WIND_PROXY:
+            logger.warning(
+                "Wind 代理未连接，请确认 Wind HTTP 网关已启动且 Wind 终端已登录"
+            )
+        else:
+            logger.warning("Wind API 未连接成功，请确保Wind终端已登录")
 except Exception as e:
     logger.error(f"Wind API 初始化失败: {e}")
     is_connected = False
@@ -290,6 +314,57 @@ def _normalize_codes_fields(val):
     if isinstance(val, list):
         return ",".join(val)
     return val
+
+
+def _format_day(day) -> str:
+    if hasattr(day, "strftime"):
+        return day.strftime("%Y%m%d")
+    text = str(day)
+    if "T" in text:
+        text = text.split("T", 1)[0]
+    return text.replace("-", "")[:8]
+
+
+def _extract_trading_days(result) -> List[str]:
+    source = None
+    if hasattr(result, "Data") and result.Data and result.Data[0]:
+        source = result.Data[0]
+    elif hasattr(result, "Times") and result.Times:
+        source = result.Times
+    if not source:
+        return []
+    return [_format_day(day) for day in source]
+
+
+def _wind_result_to_dict(result) -> dict:
+    if isinstance(result, tuple) and len(result) == 2:
+        error_code, data = result
+        if isinstance(data, pd.DataFrame):
+            df = data.reset_index()
+            return {
+                "ErrorCode": error_code,
+                "Data": df.to_dict(orient="split")["data"],
+                "Codes": [c for c in df.columns if c != "index"],
+                "Fields": [],
+                "Times": [
+                    _format_day(v) for v in df.get("index", df.index).tolist()
+                ],
+            }
+        return {
+            "ErrorCode": error_code,
+            "Data": data,
+            "Codes": [],
+            "Fields": [],
+            "Times": [],
+        }
+
+    return {
+        "ErrorCode": getattr(result, "ErrorCode", -1),
+        "Data": getattr(result, "Data", []),
+        "Codes": getattr(result, "Codes", []),
+        "Fields": getattr(result, "Fields", []),
+        "Times": getattr(result, "Times", []) if hasattr(result, "Times") else [],
+    }
 
 @mcp.tool()
 def get_today_date(fmt: str = "%Y%m%d") -> dict:
@@ -368,13 +443,7 @@ def wind_wsd(
         codes_ = _normalize_codes_fields(codes)
         fields_ = _normalize_codes_fields(fields)
         result = w.wsd(codes_, fields_, beginTime, endTime, options)
-        return {
-            'ErrorCode': result.ErrorCode,
-            'Data': result.Data,
-            'Codes': result.Codes,
-            'Fields': result.Fields,
-            'Times': result.Times
-        }
+        return _wind_result_to_dict(result)
     except Exception as e:
         return {'ErrorCode': -1, 'error': str(e)}
 
@@ -401,13 +470,10 @@ def wind_wss(
         codes_ = _normalize_codes_fields(codes)
         fields_ = _normalize_codes_fields(fields)
         result = w.wss(codes_, fields_, options)
-        return {
-            'ErrorCode': result.ErrorCode,
-            'Data': result.Data,
-            'Codes': result.Codes,
-            'Fields': result.Fields,
-            'Times': result.Times if hasattr(result, 'Times') else []
-        }
+        payload = _wind_result_to_dict(result)
+        if not payload.get("Times"):
+            payload["Times"] = []
+        return payload
     except Exception as e:
         return {'ErrorCode': -1, 'error': str(e)}
 
@@ -438,13 +504,7 @@ def wind_wses(
         codes_ = _normalize_codes_fields(codes)
         fields_ = _normalize_codes_fields(fields)
         result = w.wses(codes_, fields_, beginTime, endTime, options)
-        return {
-            'ErrorCode': result.ErrorCode,
-            'Data': result.Data,
-            'Codes': result.Codes,
-            'Fields': result.Fields,
-            'Times': result.Times
-        }
+        return _wind_result_to_dict(result)
     except Exception as e:
         return {'ErrorCode': -1, 'error': str(e)}
 
@@ -468,16 +528,9 @@ def wind_tdays(
     """
     try:
         result = w.tdays(beginTime, endTime, options)
-        trading_days = []
-        if hasattr(result, 'Data') and result.Data:
-            for day in result.Data[0]:
-                if hasattr(day, 'strftime'):
-                    trading_days.append(day.strftime('%Y%m%d'))
-                else:
-                    trading_days.append(str(day))
         return {
-            'ErrorCode': result.ErrorCode,
-            'TradingDays': trading_days
+            "ErrorCode": getattr(result, "ErrorCode", -1),
+            "TradingDays": _extract_trading_days(result),
         }
     except Exception as e:
         return {'ErrorCode': -1, 'error': str(e)}
@@ -503,15 +556,14 @@ def wind_tdaysoffset(
     try:
         result = w.tdaysoffset(offset, beginTime, options)
         offset_date = None
-        if hasattr(result, 'Data') and result.Data and result.Data[0]:
-            day = result.Data[0][0]
-            if hasattr(day, 'strftime'):
-                offset_date = day.strftime('%Y%m%d')
-            else:
-                offset_date = str(day)
+        days = _extract_trading_days(result)
+        if days:
+            offset_date = days[0]
+        elif hasattr(result, "Data") and result.Data and result.Data[0]:
+            offset_date = _format_day(result.Data[0][0])
         return {
-            'ErrorCode': result.ErrorCode,
-            'OffsetDate': offset_date
+            "ErrorCode": getattr(result, "ErrorCode", -1),
+            "OffsetDate": offset_date,
         }
     except Exception as e:
         return {'ErrorCode': -1, 'error': str(e)}
@@ -537,11 +589,11 @@ def wind_tdayscount(
     try:
         result = w.tdayscount(beginTime, endTime, options)
         count = None
-        if hasattr(result, 'Data') and result.Data and result.Data[0]:
+        if hasattr(result, "Data") and result.Data and result.Data[0]:
             count = result.Data[0][0]
         return {
-            'ErrorCode': result.ErrorCode,
-            'Count': count
+            "ErrorCode": getattr(result, "ErrorCode", -1),
+            "Count": count,
         }
     except Exception as e:
         return {'ErrorCode': -1, 'error': str(e)}
@@ -678,6 +730,8 @@ async def health_check():
         return JSONResponse({
             "status": "ok",
             "wind_connected": connected,
+            "wind_backend": WIND_BACKEND_LABEL,
+            "wind_proxy": USING_WIND_PROXY,
             "server_version": "1.0.0",
             "tools": tools
         })
@@ -689,12 +743,16 @@ async def health_check():
 
 
 def wind_keepalive(interval=60):
-    """定时检测Wind API连接，断开时自动重连（避免死循环弹窗）"""
+    """定时检测 Wind 连接；代理模式下仅告警，重连由远端 Wind 网关负责。"""
     global wind_auto_login_attempted
     while True:
         try:
             if not w.isconnected():
-                if not wind_auto_login_attempted:
+                if USING_WIND_PROXY:
+                    logger.warning(
+                        "Wind 代理不可用，请检查 Wind HTTP 网关与 Wind 终端状态"
+                    )
+                elif not wind_auto_login_attempted:
                     logger.warning("Wind API 断开，尝试自动重连...")
                     w.start()
                     wind_auto_login_attempted = True
@@ -706,15 +764,26 @@ def wind_keepalive(interval=60):
                 else:
                     logger.warning("Wind API 仍未连接，已尝试自动重连，等待人工干预...")
             else:
-                wind_auto_login_attempted = False  # 恢复正常
+                wind_auto_login_attempted = False
         except Exception as e:
-            logger.error(f"Wind API 自动重连异常: {e}")
+            logger.error(f"Wind API 连接检查异常: {e}")
         time.sleep(interval)
 
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(description="Wind API MCP直连服务器")
+    parser = argparse.ArgumentParser(description="Wind API MCP 服务器")
+    parser.add_argument(
+        "--wind-proxy",
+        action="store_true",
+        help="通过 Wind HTTP 代理访问 Wind（等同 WIND_USE_PROXY=1）",
+    )
+    parser.add_argument(
+        "--wind-api-url",
+        type=str,
+        default=None,
+        help="Wind HTTP 网关地址，如 http://wind-host:6668",
+    )
     parser.add_argument(
         "--host", 
         type=str, 
@@ -737,9 +806,13 @@ def main():
     
     # 检查Wind连接状态
     if not is_connected:
-        logger.warning("Wind API未连接，某些功能可能不可用")
-    
-    logger.info(f"启动Wind API MCP直连服务器在 {args.host}:{args.port}")
+        if USING_WIND_PROXY:
+            logger.warning("Wind 代理未连接，某些功能可能不可用")
+        else:
+            logger.warning("Wind API未连接，某些功能可能不可用")
+
+    logger.info(f"Wind 后端: {WIND_BACKEND_LABEL}")
+    logger.info(f"启动 Wind API MCP 服务器在 {args.host}:{args.port}")
     
     # 获取已注册的工具
     tool_funcs = [
