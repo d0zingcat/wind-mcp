@@ -102,6 +102,40 @@ Cursor → wind-mcp (:8888) → Wind HTTP 网关 (:6668) → Wind 终端
 curl http://wind-host:6668/health
 ```
 
+### Docker 部署
+
+容器默认启用 **Wind HTTP 代理模式**（`WIND_USE_PROXY=1`），需通过环境变量指定网关地址。
+
+```bash
+cp .env.example .env
+# 编辑 .env，设置 WIND_API_URL
+
+docker compose up -d --build
+```
+
+或手动构建运行：
+
+```bash
+docker build -t wind-mcp .
+docker run --rm -p 8888:8888 \
+  -e WIND_API_URL=http://wind-host:6668 \
+  wind-mcp
+```
+
+CI 会在 push 到 `main` 或打 tag 时构建并推送镜像到 GitHub Container Registry：
+
+```
+ghcr.io/d0zingcat/wind-mcp:latest
+```
+
+拉取运行：
+
+```bash
+docker run --rm -p 8888:8888 \
+  -e WIND_API_URL=http://wind-host:6668 \
+  ghcr.io/d0zingcat/wind-mcp:latest
+```
+
 ### 3. 客户端配置
 
 在任何兼容 MCP 标准的客户端（如 **Cherry Studio**, **Cursor** 等）中添加如下 JSON 配置，即可开始使用。
@@ -136,6 +170,11 @@ curl http://wind-host:6668/health
 
 ```
 .
+├── .github/workflows/  # CI 配置
+│   └── docker.yml      # Docker 构建与推送
+├── Dockerfile          # 容器镜像
+├── docker-compose.yml  # 本地 Docker 编排
+├── .env.example        # 环境变量示例
 ├── .gitignore          # Git忽略文件配置
 ├── README.md           # 项目主说明文档
 ├── requirements.txt    # Python依赖库

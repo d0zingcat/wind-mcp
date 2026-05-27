@@ -17,3 +17,6 @@ t.ipynb
 
 # 私有 Wind HTTP 网关（本地开发用，不纳入版本控制）
 lp-wind-api/
+
+# 环境变量
+.env

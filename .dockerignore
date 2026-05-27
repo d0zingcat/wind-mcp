@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.log
+logs/
+.env
+.env.*
+lp-wind-api/
+.idea/
+.vscode/
+.DS_Store
+tests/
+*.md
+!docs/README_WindPy_MCP.md
