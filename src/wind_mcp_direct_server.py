@@ -563,6 +563,38 @@ def wind_wsq(
         return {'ErrorCode': -1, 'error': str(e)}
 
 @mcp.tool()
+def wind_edb(
+    codes,
+    beginTime: str,
+    endTime: str,
+    options: str = ""
+) -> dict:
+    """
+    获取全球宏观经济数据（EDB）
+
+    从 Wind 宏观经济数据库提取指标时间序列。codes 为 EDB 指标代码（非证券代码），
+    如 M0000612（中国 CPI 当月同比）。指标代码可通过 Wind 终端「代码生成器 → 宏观经济数据」
+    或 EDB 模块查找。
+
+    参数:
+        codes (str or list): EDB 指标代码，如 "M0000612" 或 ["M0000612", "M0000705"]
+        beginTime (str): 起始日期，如 "2024-01-01"、"20240101"、"ED-10Y"、"-5D"
+        endTime (str): 截止日期，如 "2025-03-14"、"20250314"、"-2D"
+        options (str): 可选参数，如 "Fill=Previous"（空值沿用前值）
+    返回:
+        dict: 包含 ErrorCode, Data, Codes, Fields, Times 等
+    示例:
+        wind_edb("M0000612,M0000705", "2024-01-01", "2025-03-14", "Fill=Previous")
+        wind_edb("M5567876", "ED-10Y", "2025-03-14", "Fill=Previous")
+    """
+    try:
+        codes_ = _normalize_codes_fields(codes)
+        result = w.edb(codes_, beginTime, endTime, options)
+        return _wind_result_to_dict(result)
+    except Exception as e:
+        return {'ErrorCode': -1, 'error': str(e)}
+
+@mcp.tool()
 def wind_tdays(
     beginTime: str,
     endTime: str,

@@ -1,12 +1,13 @@
 # WindPy MCP Server 支持的API文档
 
-本服务支持以下八个 WindPy 核心函数：
+本服务支持以下九个 WindPy 核心函数：
 
 - w.wsd（获取日时间序列数据）
 - w.wss（获取日截面数据）
 - w.wses（获取板块日序列数据）
 - w.wset（获取报表/数据集）
 - w.wsq（获取实时行情快照）
+- w.edb（获取全球宏观经济数据）
 - w.tdays（获取区间内日期序列）
 - w.tdaysoffset（获取偏移后的日期）
 - w.tdayscount（获取区间内日期数量）
@@ -165,7 +166,38 @@ w.wsq("000001.SH", "rt_last,rt_open")
 
 ---
 
-## 6. 获取区间内日期序列 w.tdays
+## 6. 获取全球宏观经济数据 w.edb
+
+**`w.edb(codes, beginTime, endTime, options)`**
+
+- **参数说明**
+
+| 参数      | 类型      | 必选 | 说明                                                         |
+| :-------- | :-------- | :--- | :----------------------------------------------------------- |
+| codes     | str或list | 是   | EDB 指标代码，如 "M0000612" 或 ["M0000612","M0000705"]       |
+| beginTime | str       | 是   | 起始日期，如 "2024-01-01"、"20240101"、"ED-10Y"、"-5D"      |
+| endTime   | str       | 是   | 截止日期，如 "2025-03-14"、"20250314"、"-2D"                |
+| options   | str       | 否   | 可选参数，如 "Fill=Previous"（空值沿用前值）                 |
+
+- **返回说明**
+
+| 字段      | 说明                                                         |
+| :-------- | :----------------------------------------------------------- |
+| ErrorCode | 返回代码，0为正常，其他为错误码                              |
+| Data      | 数据列表                                                     |
+| Codes     | 指标代码列表                                                 |
+| Fields    | 指标列表                                                     |
+| Times     | 时间列表                                                     |
+
+- **示例**
+```python
+w.edb("M0000612,M0000705", "2024-01-01", "2025-03-14", "Fill=Previous")
+w.edb("M5567876,M5567889", "ED-10Y", "2025-03-14", "Fill=Previous")
+```
+
+---
+
+## 7. 获取区间内日期序列 w.tdays
 
 **`w.tdays(beginTime, endTime, options)`**
 
@@ -191,7 +223,7 @@ date_list = w.tdays("2018-05-13", "2018-06-13", "Days=Trading")
 
 ---
 
-## 7. 获取偏移后的日期 w.tdaysoffset
+## 8. 获取偏移后的日期 w.tdaysoffset
 
 **`w.tdaysoffset(offset, beginTime, options)`**
 
@@ -217,7 +249,7 @@ offset_date = w.tdaysoffset(-10, "2023-06-01", "Period=M;Days=Alldays")
 
 ---
 
-## 8. 获取区间内日期数量 w.tdayscount
+## 9. 获取区间内日期数量 w.tdayscount
 
 **`w.tdayscount(beginTime, endTime, options)`**
 
@@ -243,7 +275,7 @@ days = w.tdayscount("2018-01-01", "2018-12-31", "Days=Trading")
 
 ---
 
-## 9. 日期宏说明
+## 10. 日期宏说明
 
 - 支持相对日期表达方式：如-5D（前推5个日历日）、-10TD（前推10个交易日）、-1M（前推1个月）等。
 - 支持特殊日期宏：如ED（截止日期）、SD（开始日期）、IPO（上市首日）、RMF（本月初）、LYE（上年末）等。
