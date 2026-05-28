@@ -96,6 +96,15 @@ Cursor → wind-mcp (:8888) → Wind HTTP 网关 (:6668) → Wind 终端
 - `GET /health` → `{"status":"ok","wind":"connected"}`
 - `POST /wind` → `{"type":"wsd","args":[...]}` → `{"errorCode":0,"data":[...]}`
 
+wind-mcp 代理模式下访问网关时会携带以下请求头，便于网关侧限流与审计：
+
+| 请求头 | 值 | 说明 |
+| :--- | :--- | :--- |
+| `X-Wind-MCP-Client` | `wind-mcp` | 客户端标识 |
+| `X-Wind-MCP-Version` | `1.0.0` | 客户端版本 |
+| `User-Agent` | `wind-mcp/1.0.0` | 与上同源标识 |
+| `Authorization` | `Bearer <token>` | 可选；设置环境变量 `WIND_GATEWAY_TOKEN` 时附带 |
+
 启动前检查网关：
 
 ```bash

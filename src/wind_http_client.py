@@ -13,6 +13,23 @@ import requests
 DEFAULT_BASE_URL = "http://127.0.0.1:6668"
 BASE_URL = os.environ.get("WIND_API_URL", DEFAULT_BASE_URL)
 
+# 发往 Wind HTTP 网关的请求标识（便于网关限流、审计）
+MCP_CLIENT_NAME = "wind-mcp"
+MCP_CLIENT_VERSION = "1.0.0"
+
+
+def build_gateway_request_headers() -> dict[str, str]:
+    """构建访问 Wind HTTP 网关时的默认请求头。"""
+    headers = {
+        "X-Wind-MCP-Client": MCP_CLIENT_NAME,
+        "X-Wind-MCP-Version": MCP_CLIENT_VERSION,
+        "User-Agent": f"{MCP_CLIENT_NAME}/{MCP_CLIENT_VERSION}",
+    }
+    token = os.environ.get("WIND_GATEWAY_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
 
 class WindData:
     def __init__(self, raw_data=None, err_code=0, req_args=None):
@@ -60,8 +77,9 @@ class WindData:
 
 
 class WindHttpClient:
-    def __init__(self, base_url=None):
+    def __init__(self, base_url=None, request_headers=None):
         self.base_url = (base_url or BASE_URL).rstrip("/")
+        self.request_headers = request_headers or build_gateway_request_headers()
 
     def start(self):
         pass
@@ -71,7 +89,11 @@ class WindHttpClient:
 
     def isconnected(self):
         try:
-            res = requests.get(f"{self.base_url}/health", timeout=5)
+            res = requests.get(
+                f"{self.base_url}/health",
+                headers=self.request_headers,
+                timeout=5,
+            )
             if res.status_code != 200:
                 return False
             payload = res.json()
@@ -85,7 +107,10 @@ class WindHttpClient:
 
         try:
             res = requests.post(
-                f"{self.base_url}/wind", json=payload, timeout=30
+                f"{self.base_url}/wind",
+                json=payload,
+                headers=self.request_headers,
+                timeout=30,
             )
             if res.status_code != 200:
                 return -1, None
