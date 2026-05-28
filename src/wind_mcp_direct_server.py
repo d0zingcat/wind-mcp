@@ -388,7 +388,7 @@ def get_today_date(fmt: str = "%Y%m%d") -> dict:
 @mcp.tool()
 def search_windpy_doc(query: str) -> dict:
     """
-    检索WindPy官方API文档（仅限本服务支持的六个函数），返回相关内容片段。
+    检索WindPy官方API文档（仅限本服务支持的核心函数），返回相关内容片段。
 
     参数:
         query (str): 检索关键词或自然语言问题
@@ -504,6 +504,60 @@ def wind_wses(
         codes_ = _normalize_codes_fields(codes)
         fields_ = _normalize_codes_fields(fields)
         result = w.wses(codes_, fields_, beginTime, endTime, options)
+        return _wind_result_to_dict(result)
+    except Exception as e:
+        return {'ErrorCode': -1, 'error': str(e)}
+
+@mcp.tool()
+def wind_wset(
+    table_name: str,
+    options: str = ""
+) -> dict:
+    """
+    获取报表/数据集数据（WSET）
+
+    用于板块成分、指数成分、ETF 申赎成分、停复牌、分红送转等报表数据。
+
+    参数:
+        table_name (str): 报表名称，如 "sectorconstituent"、"indexconstituent"
+        options (str): 以分号分隔的可选参数
+    返回:
+        dict: 包含 ErrorCode, Data, Codes, Fields, Times 等
+    示例:
+        wind_wset("sectorconstituent", "date=2026-03-03;sectorid=1000073208000000;field=date,wind_code")
+        wind_wset("indexconstituent", "date=2026-05-28;windcode=399303.SZ")
+    """
+    try:
+        result = w.wset(table_name, options)
+        return _wind_result_to_dict(result)
+    except Exception as e:
+        return {'ErrorCode': -1, 'error': str(e)}
+
+@mcp.tool()
+def wind_wsq(
+    codes,
+    fields,
+    options: str = ""
+) -> dict:
+    """
+    获取实时行情快照（WSQ）
+
+    MCP 仅支持一次性快照模式，不支持订阅回调。
+
+    参数:
+        codes (str or list): 证券代码，如 "801780.SI" 或 ["600030.SH", "000001.SZ"]
+        fields (str or list): 指标列表，如 "rt_open" 或 "rt_last,rt_open"
+        options (str): 以分号分隔的可选参数
+    返回:
+        dict: 包含 ErrorCode, Data, Codes, Fields, Times 等
+    示例:
+        wind_wsq("801780.SI", "rt_open")
+        wind_wsq("000001.SH", "rt_last,rt_open")
+    """
+    try:
+        codes_ = _normalize_codes_fields(codes)
+        fields_ = _normalize_codes_fields(fields)
+        result = w.wsq(codes_, fields_, options)
         return _wind_result_to_dict(result)
     except Exception as e:
         return {'ErrorCode': -1, 'error': str(e)}
@@ -643,7 +697,7 @@ async def docs():
             </div>
             <div class="tool">
                 <h3>search_windpy_doc</h3>
-                <p>检索WindPy官方API文档（仅限本服务支持的六个函数）</p>
+                <p>检索WindPy官方API文档（仅限本服务支持的核心函数）</p>
             </div>
             
             <h2>Wind数据工具</h2>
@@ -657,7 +711,15 @@ async def docs():
             </div>
             <div class="tool">
                 <h3>wind_wses</h3>
-                <p>获取板块成分股</p>
+                <p>获取板块日序列数据</p>
+            </div>
+            <div class="tool">
+                <h3>wind_wset</h3>
+                <p>获取报表/数据集（板块成分、指数成分等）</p>
+            </div>
+            <div class="tool">
+                <h3>wind_wsq</h3>
+                <p>获取实时行情快照</p>
             </div>
             <div class="tool">
                 <h3>wind_tdays</h3>
@@ -723,7 +785,7 @@ async def health_check():
     try:
         connected = w.isconnected()
         tools = [
-            "wind_wsd", "wind_wss", "wind_wses",
+            "wind_wsd", "wind_wss", "wind_wses", "wind_wset", "wind_wsq",
             "wind_tdays", "wind_tdaysoffset", "wind_tdayscount",
             "get_today_date", "search_windpy_doc"
         ]

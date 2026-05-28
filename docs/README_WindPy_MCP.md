@@ -1,10 +1,12 @@
 # WindPy MCP Server 支持的API文档
 
-本服务仅支持以下六个WindPy核心函数：
+本服务支持以下八个 WindPy 核心函数：
 
 - w.wsd（获取日时间序列数据）
 - w.wss（获取日截面数据）
 - w.wses（获取板块日序列数据）
+- w.wset（获取报表/数据集）
+- w.wsq（获取实时行情快照）
 - w.tdays（获取区间内日期序列）
 - w.tdaysoffset（获取偏移后的日期）
 - w.tdayscount（获取区间内日期数量）
@@ -102,7 +104,68 @@ errorCode, data = w.wses("a001010200000000,a001010100000000", "sec_close_avg", "
 
 ---
 
-## 4. 获取区间内日期序列 w.tdays
+## 4. 获取报表/数据集 w.wset
+
+**`w.wset(tableName, options)`**
+
+- **参数说明**
+
+| 参数      | 类型 | 必选 | 说明                                                         |
+| :-------- | :--- | :--- | :----------------------------------------------------------- |
+| tableName | str  | 是   | 报表名称，如 "sectorconstituent"、"indexconstituent"         |
+| options   | str  | 否   | 以分号分隔的可选参数，如 "date=2026-03-03;sectorid=1000073208000000;field=date,wind_code" |
+
+- **返回说明**
+
+| 字段      | 说明                                                         |
+| :-------- | :----------------------------------------------------------- |
+| ErrorCode | 返回代码，0为正常，其他为错误码                              |
+| Data      | 数据列表                                                     |
+| Codes     | 代码/序号列表                                                |
+| Fields    | 字段列表                                                     |
+| Times     | 时间列表                                                     |
+
+- **示例**
+```python
+w.wset("sectorconstituent", "date=2026-03-03;sectorid=1000073208000000;field=date,wind_code")
+w.wset("indexconstituent", "date=2026-05-28;windcode=399303.SZ")
+```
+
+---
+
+## 5. 获取实时行情快照 w.wsq
+
+**`w.wsq(codes, fields, options)`**
+
+MCP 工具仅支持快照模式（不传回调函数），不支持订阅推送。
+
+- **参数说明**
+
+| 参数    | 类型      | 必选 | 说明                                                         |
+| :------ | :-------- | :--- | :----------------------------------------------------------- |
+| codes   | str或list | 是   | 证券代码，如 "801780.SI" 或 ["600030.SH","000001.SZ"]        |
+| fields  | str或list | 是   | 指标列表，如 "rt_open" 或 "rt_last,rt_open"                   |
+| options | str       | 否   | 以分号分隔的可选参数                                         |
+
+- **返回说明**
+
+| 字段      | 说明                                                         |
+| :-------- | :----------------------------------------------------------- |
+| ErrorCode | 返回代码，0为正常，其他为错误码                              |
+| Data      | 数据列表                                                     |
+| Codes     | 证券代码列表                                                 |
+| Fields    | 指标列表                                                     |
+| Times     | 时间列表                                                     |
+
+- **示例**
+```python
+w.wsq("801780.SI", "rt_open")
+w.wsq("000001.SH", "rt_last,rt_open")
+```
+
+---
+
+## 6. 获取区间内日期序列 w.tdays
 
 **`w.tdays(beginTime, endTime, options)`**
 
@@ -128,7 +191,7 @@ date_list = w.tdays("2018-05-13", "2018-06-13", "Days=Trading")
 
 ---
 
-## 5. 获取偏移后的日期 w.tdaysoffset
+## 7. 获取偏移后的日期 w.tdaysoffset
 
 **`w.tdaysoffset(offset, beginTime, options)`**
 
@@ -154,7 +217,7 @@ offset_date = w.tdaysoffset(-10, "2023-06-01", "Period=M;Days=Alldays")
 
 ---
 
-## 6. 获取区间内日期数量 w.tdayscount
+## 8. 获取区间内日期数量 w.tdayscount
 
 **`w.tdayscount(beginTime, endTime, options)`**
 
@@ -180,7 +243,7 @@ days = w.tdayscount("2018-01-01", "2018-12-31", "Days=Trading")
 
 ---
 
-## 7. 日期宏说明
+## 9. 日期宏说明
 
 - 支持相对日期表达方式：如-5D（前推5个日历日）、-10TD（前推10个交易日）、-1M（前推1个月）等。
 - 支持特殊日期宏：如ED（截止日期）、SD（开始日期）、IPO（上市首日）、RMF（本月初）、LYE（上年末）等。
